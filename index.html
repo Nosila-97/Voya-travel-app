@@ -9,7 +9,6 @@
   <link rel="apple-touch-icon" href="assets/icon.svg" />
   <link rel="manifest" href="manifest.json" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Voyā" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,110 +16,100 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand-wrap" onclick="navigate('home')"><img class="brand-icon" src="assets/icon.svg" alt="Voyā icon" /><div class="brand">Voyā</div></div>
-      <button id="langToggle" class="ghost-btn" aria-label="Toggle language">中</button>
-    </header>
+<div class="app-shell">
+  <header class="topbar">
+    <button id="globalBack" class="icon-btn hidden" aria-label="Back">←</button>
+    <div class="brand-wrap" onclick="goTrips()"><img src="assets/icon.svg" class="brand-icon" alt="Voyā"><span class="brand">Voyā</span></div>
+    <div class="top-actions"><span id="saveState" class="save-state"></span><button id="langToggle" class="ghost-btn">中</button></div>
+  </header>
+  <main id="app"></main>
+  <nav id="bottomNav" class="bottom-nav hidden">
+    <button data-page="trip"><span>⌂</span><small data-i18n="nav.trip">Trip</small></button>
+    <button data-page="packing"><span>▣</span><small data-i18n="nav.pack">Pack</small></button>
+    <button data-page="outfits"><span>♡</span><small data-i18n="nav.outfits">Looks</small></button>
+    <button data-page="shared"><span>◎</span><small data-i18n="nav.shared">Shared</small></button>
+  </nav>
+</div>
 
-    <main id="app"></main>
+<template id="tripsTpl">
+  <section class="screen-pad">
+    <div class="home-head"><div><div class="eyebrow" data-i18n="trips.eyebrow">YOUR TRIPS</div><h1 data-i18n="trips.title">Where to next?</h1><p data-i18n="trips.subtitle">Keep every trip, packing list and outfit plan in one place.</p></div><button class="primary-btn compact" onclick="createTrip()">＋ <span data-i18n="trips.new">New trip</span></button></div>
+    <div id="tripCards" class="trip-cards"></div>
+  </section>
+</template>
 
-    <nav id="bottomNav" class="bottom-nav hidden">
-      <button data-nav="overview" class="nav-item active"><span>⌂</span><small data-i18n="nav.home">Home</small></button>
-      <button data-nav="packing" class="nav-item"><span>▣</span><small data-i18n="nav.packing">Packing</small></button>
-      <button data-nav="outfits" class="nav-item"><span>♡</span><small data-i18n="nav.outfits">Outfits</small></button>
-      <button data-nav="shared" class="nav-item"><span>◎</span><small data-i18n="nav.shared">Shared</small></button>
-    </nav>
-  </div>
+<template id="editTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><div><h2 id="editTitle" data-i18n="edit.title">Trip details</h2><p data-i18n="edit.subtitle">Start with the basics. You can change everything later.</p></div></div>
+    <label class="field-label" data-i18n="edit.name">Trip name</label><div class="input-card"><input id="tripName" data-ph-en="e.g. Portugal + Spain" data-ph-zh="例如：葡萄牙 + 西班牙"></div>
+    <label class="field-label" data-i18n="edit.destination">Main destination</label><div class="input-card">📍<input id="destination" data-ph-en="Where are you going?" data-ph-zh="你要去哪里？"></div>
+    <div class="two-col"><div><label class="field-label" data-i18n="edit.start">Start</label><div class="input-card"><input id="startDate" type="date"></div></div><div><label class="field-label" data-i18n="edit.end">End</label><div class="input-card"><input id="endDate" type="date"></div></div></div>
+    <label class="field-label" data-i18n="edit.type">Trip type</label><div id="tripTypes" class="choice-grid three"></div>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="cancelEdit()" data-i18n="common.cancel">Cancel</button><button class="primary-btn" onclick="saveTripDetails(true)" data-i18n="common.saveContinue">Save & continue</button></div>
+  </section>
+</template>
 
-  <template id="homeTpl">
-    <section class="hero-card screen-pad">
-      <div class="hero-copy">
-        <div class="hero-badge"><img src="assets/icon.svg" alt="Voyā app icon" /></div>
-        <div class="eyebrow" data-i18n="home.eyebrow">YOUR NEXT TRIP</div>
-        <h1><span data-i18n="home.title1">Pack light.</span><br><span data-i18n="home.title2">Travel beautifully.</span></h1>
-        <p data-i18n="home.subtitle">Build a trip from scratch, plan outfits, and split shared items with friends.</p>
-        <button class="primary-btn" onclick="startNewTrip()" data-i18n="home.start">Create a trip</button>
-        <button id="continueTripBtn" class="secondary-btn hero-secondary hidden" onclick="navigate('overview')" data-i18n="home.continue">Continue my trip</button>
-      </div>
-    </section>
-  </template>
+<template id="membersTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><h2 data-i18n="members.title">Travelers</h2><p data-i18n="members.subtitle">Add only the people actually joining. Remove anyone anytime.</p></div>
+    <div id="membersList" class="members-list"></div>
+    <div class="inline-add"><input id="memberName" data-ph-en="Traveler name" data-ph-zh="同行人名字"><button onclick="addMember()">＋</button></div>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="navigate('edit')" data-i18n="common.back">Back</button><button class="primary-btn" onclick="saveMembers()" data-i18n="common.saveContinue">Save & continue</button></div>
+  </section>
+</template>
 
-  <template id="createTpl">
-    <section class="screen-pad">
-      <div class="section-head">
-        <button class="back-btn" onclick="navigate('home')">←</button>
-        <div><h2 data-i18n="create.title">Create a Trip</h2><p data-i18n="create.subtitle">Start with your actual destination and dates.</p></div>
-      </div>
-      <label class="field-label" data-i18n="create.tripname">Trip name</label>
-      <div class="input-card"><input id="tripName" data-ph-en="e.g. Portugal + Spain" data-ph-zh="例如：葡萄牙 + 西班牙" /></div>
-      <label class="field-label" data-i18n="create.destination">Destination</label>
-      <div class="input-card">📍 <input id="destination" data-ph-en="Where are you going?" data-ph-zh="你要去哪里？" /></div>
-      <div class="two-col">
-        <div><label class="field-label" data-i18n="create.start">Start date</label><div class="input-card"><input id="startDate" type="date" /></div></div>
-        <div><label class="field-label" data-i18n="create.end">End date</label><div class="input-card"><input id="endDate" type="date" /></div></div>
-      </div>
-      <label class="field-label" data-i18n="create.triptype">Trip type</label>
-      <div class="choice-grid three" id="tripTypeChoices">
-        <button class="choice" data-value="leisure">✈️<span data-i18n="create.leisure">Leisure</span></button>
-        <button class="choice" data-value="business">💼<span data-i18n="create.business">Business</span></button>
-        <button class="choice" data-value="mixed">♡<span data-i18n="create.mixed">Mixed</span></button>
-      </div>
-      <button class="primary-btn wide" onclick="saveTripBasics()" data-i18n="common.next">Next</button>
-    </section>
-  </template>
+<template id="plansTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><h2 data-i18n="plans.title">Plans & events</h2><p data-i18n="plans.subtitle">Tap suggestions or add your own. Nothing is permanent.</p></div>
+    <div id="activityGrid" class="activity-grid"></div>
+    <label class="field-label" data-i18n="plans.custom">Add your own</label><div class="inline-add"><input id="customActivity" data-ph-en="e.g. Wedding, surf lesson" data-ph-zh="例如：婚礼、冲浪课"><button onclick="addCustomActivity()">＋</button></div>
+    <div id="selectedActivities" class="chip-list"></div>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="navigate('members')" data-i18n="common.back">Back</button><button class="primary-btn" onclick="savePlans()" data-i18n="common.saveContinue">Save & continue</button></div>
+  </section>
+</template>
 
-  <template id="membersTpl">
-    <section class="screen-pad">
-      <div class="section-head"><button class="back-btn" onclick="navigate('create')">←</button><div><h2 data-i18n="members.title">Who’s coming?</h2><p data-i18n="members.subtitle">No default friends. Add only the people actually joining.</p></div></div>
-      <div id="membersList" class="members-list"></div>
-      <div class="inline-add"><input id="memberName" data-ph-en="Friend's name" data-ph-zh="朋友名字" /><button onclick="addMemberFromInput()">＋</button></div>
-      <div class="soft-card"><div><div class="mini-title" data-i18n="members.inviteTitle">Invite by link</div><p data-i18n="members.inviteCopy">Copy the trip link after adding people.</p></div><button class="mini-btn" onclick="copyInvite()" data-i18n="members.copy">Copy link</button></div>
-      <button class="primary-btn wide" onclick="navigate('activities')" data-i18n="common.continue">Continue</button>
-    </section>
-  </template>
+<template id="tripTpl">
+  <section>
+    <div class="overview-hero screen-pad"><div class="overview-top"><div><div class="eyebrow" data-i18n="trip.overview">TRIP OVERVIEW</div><h2 id="overviewName"></h2><p id="overviewDates"></p></div><button class="round-btn" onclick="navigate('edit')">✎</button></div><div id="overviewDestination" class="weather-pill"></div></div>
+    <div class="screen-pad compact-top">
+      <div class="stat-row"><div class="stat"><strong id="dayCount">—</strong><small data-i18n="trip.days">Days</small></div><div class="stat"><strong id="memberCount">1</strong><small data-i18n="trip.travelers">Travelers</small></div><div class="stat"><strong id="packCount">0%</strong><small data-i18n="trip.packed">Packed</small></div></div>
+      <div class="section-title-row"><h3 data-i18n="trip.stops">Stops</h3><button class="text-btn" onclick="openStopModal()">＋ <span data-i18n="trip.addStop">Add stop</span></button></div><div id="stopsList"></div>
+      <div class="section-title-row"><h3 data-i18n="trip.plans">Plans</h3><button class="text-btn" onclick="navigate('plans')" data-i18n="common.edit">Edit</button></div><div id="overviewActivities" class="chip-list"></div>
+      <div class="section-title-row"><h3 data-i18n="trip.travelersTitle">Travelers</h3><button class="text-btn" onclick="navigate('members')" data-i18n="common.edit">Edit</button></div><div id="travelerChips" class="chip-list"></div>
+      <div class="quick-actions"><button onclick="navigate('packing')"><span>▣</span><b data-i18n="trip.pack">Packing</b></button><button onclick="navigate('outfits')"><span>♡</span><b data-i18n="trip.looks">Outfits</b></button><button onclick="navigate('shared')"><span>◎</span><b data-i18n="trip.shared">Shared</b></button></div>
+      <button class="secondary-btn wide danger-soft" onclick="deleteCurrentTrip()" data-i18n="trip.delete">Delete this trip</button>
+    </div>
+  </section>
+</template>
 
-  <template id="activitiesTpl">
-    <section class="screen-pad">
-      <div class="section-head"><button class="back-btn" onclick="navigate('members')">←</button><div><h2 data-i18n="activities.title">Plans & Events</h2><p data-i18n="activities.subtitle">Choose suggestions or add your own. Everything can be removed later.</p></div></div>
-      <div class="activity-grid" id="activityGrid"></div>
-      <label class="field-label" data-i18n="activities.custom">Add your own event</label>
-      <div class="inline-add"><input id="customActivity" data-ph-en="e.g. Wine tasting" data-ph-zh="例如：酒庄品酒" /><button onclick="addCustomActivity()">＋</button></div>
-      <div id="selectedActivities" class="chip-list"></div>
-      <button class="primary-btn wide" onclick="saveAndOverview()" data-i18n="activities.generate">Create my trip</button>
-    </section>
-  </template>
+<template id="packingTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><h2 data-i18n="packing.title">Packing list</h2><p data-i18n="packing.subtitle">Use presets for speed, then add anything unique to your trip.</p></div>
+    <div class="progress-card"><div><b id="packProgressText">0 / 0</b><small data-i18n="packing.packed"> packed</small></div><div class="progress"><span id="packProgressBar"></span></div></div>
+    <div id="categoryTabs" class="category-tabs"></div>
+    <div id="presetBox" class="preset-box"></div>
+    <div id="packingList"></div>
+    <div class="inline-add"><input id="packingItemName" data-ph-en="Add a custom item" data-ph-zh="添加自定义物品"><button onclick="addPackingItem()">＋</button></div>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="navigate('trip')" data-i18n="common.back">Back</button><button class="primary-btn" onclick="explicitSave('packing')" data-i18n="common.save">Save</button></div>
+  </section>
+</template>
 
-  <template id="overviewTpl">
-    <section>
-      <div class="overview-hero screen-pad"><div class="eyebrow" data-i18n="overview.trip">TRIP OVERVIEW</div><h2 id="overviewName">My Trip</h2><p id="overviewDates"></p><div class="weather-pill" id="overviewDestination"></div></div>
-      <div class="screen-pad compact-top">
-        <div class="stat-row"><div class="stat"><strong id="dayCount">—</strong><small data-i18n="overview.days">Days</small></div><div class="stat"><strong id="memberCount">1</strong><small data-i18n="overview.travelers">Travelers</small></div><div class="stat"><strong id="eventCount">0</strong><small data-i18n="overview.events">Events</small></div></div>
-        <div class="section-title-row"><h3 data-i18n="overview.itinerary">Stops / itinerary</h3><button class="text-btn" onclick="openStopModal()">＋ <span data-i18n="overview.addStop">Add stop</span></button></div>
-        <div id="stopsList" class="itinerary-list"></div>
-        <div class="section-title-row"><h3 data-i18n="overview.eventsTitle">Plans</h3><button class="text-btn" onclick="navigate('activities')" data-i18n="common.edit">Edit</button></div>
-        <div id="overviewActivities" class="chip-list"></div>
-        <div class="quick-actions"><button onclick="navigate('outfits')"><span>♡</span><b data-i18n="overview.outfits">Outfits</b></button><button onclick="navigate('packing')"><span>▣</span><b data-i18n="overview.pack">Packing</b></button><button onclick="navigate('shared')"><span>◎</span><b data-i18n="overview.shared">Shared</b></button></div>
-        <button class="secondary-btn wide" onclick="navigate('create')" data-i18n="overview.editTrip">Edit trip basics</button>
-      </div>
-    </section>
-  </template>
+<template id="outfitsTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><h2 data-i18n="outfits.title">Outfit plan</h2><p data-i18n="outfits.subtitle">Plan by person, date or event.</p></div><div id="outfitTabs" class="tabs"></div><div id="outfitCards"></div><button class="secondary-btn wide" onclick="openOutfitModal()">＋ <span data-i18n="outfits.add">Add outfit</span></button>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="navigate('trip')" data-i18n="common.back">Back</button><button class="primary-btn" onclick="explicitSave('outfits')" data-i18n="common.save">Save</button></div>
+  </section>
+</template>
 
-  <template id="outfitsTpl">
-    <section class="screen-pad"><div class="section-head"><div><h2 data-i18n="outfits.title">Outfit Plan</h2><p data-i18n="outfits.subtitle">Add one look per day or event.</p></div></div><div id="outfitTabs" class="tabs"></div><div id="outfitCards"></div><button class="secondary-btn wide" onclick="addOutfit()">＋ <span data-i18n="outfits.add">Add outfit</span></button></section>
-  </template>
+<template id="sharedTpl">
+  <section class="screen-pad form-page">
+    <div class="page-head"><h2 data-i18n="shared.title">Shared items</h2><p data-i18n="shared.subtitle">Decide who brings what so you don't duplicate things.</p></div>
+    <div id="sharedPresets" class="preset-box"></div><div id="sharedList"></div><div class="inline-add"><input id="sharedItemName" data-ph-en="Add shared item" data-ph-zh="添加共享物品"><button onclick="addSharedItem()">＋</button></div>
+    <div class="sticky-actions"><button class="secondary-btn" onclick="navigate('trip')" data-i18n="common.back">Back</button><button class="primary-btn" onclick="explicitSave('shared')" data-i18n="common.save">Save</button></div>
+  </section>
+</template>
 
-  <template id="packingTpl">
-    <section class="screen-pad"><div class="section-head"><div><h2 data-i18n="packing.title">Packing List</h2><p data-i18n="packing.subtitle">Add, delete, and check off anything you want.</p></div></div><div class="progress-card"><div><b id="packProgressText">0 / 0</b><small data-i18n="packing.packed">packed</small></div><div class="progress"><span id="packProgressBar"></span></div></div><div class="packing-filters"><button class="active" data-filter="all" data-i18n="packing.all">All</button><button data-filter="clothes" data-i18n="packing.clothes">Clothes</button><button data-filter="essentials" data-i18n="packing.essentials">Essentials</button></div><div id="packingList"></div><div class="inline-add"><input id="packingItemName" data-ph-en="Add an item" data-ph-zh="添加物品" /><select id="packingItemCat"><option value="clothes">Clothes</option><option value="essentials">Essentials</option></select><button onclick="addPackingItem()">＋</button></div></section>
-  </template>
-
-  <template id="sharedTpl">
-    <section class="screen-pad"><div class="section-head"><div><h2 data-i18n="shared.title">Shared Items</h2><p data-i18n="shared.subtitle">Assign each item to a traveler. Add or remove anything.</p></div></div><div class="shared-summary"><div><strong id="assignedCount">0</strong><small data-i18n="shared.assigned">Assigned</small></div><div><strong id="unassignedCount">0</strong><small data-i18n="shared.unassigned">Unassigned</small></div><div><strong id="sharedPackedCount">0</strong><small data-i18n="shared.packed">Packed</small></div></div><div id="sharedList"></div><div class="inline-add"><input id="sharedItemName" data-ph-en="Add shared item" data-ph-zh="添加共享物品" /><button onclick="addSharedItem()">＋</button></div></section>
-  </template>
-
-  <template id="stopModalTpl">
-    <div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card"><div class="modal-handle"></div><h3 data-i18n="stop.title">Add a stop</h3><input id="stopCity" class="modal-input" data-ph-en="City / place" data-ph-zh="城市 / 地点" /><div class="two-col"><input id="stopStart" class="modal-input" type="date" /><input id="stopEnd" class="modal-input" type="date" /></div><button class="primary-btn wide" onclick="saveStop()" data-i18n="modal.add">Add</button></div></div>
-  </template>
-  <script src="app.js"></script>
-</body>
-</html>
+<template id="stopModalTpl"><div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card"><div class="modal-handle"></div><h3 data-i18n="stop.title">Add stop</h3><input id="stopCity" class="modal-input" data-ph-en="City / place" data-ph-zh="城市 / 地点"><div class="two-col"><input id="stopStart" class="modal-input" type="date"><input id="stopEnd" class="modal-input" type="date"></div><div class="modal-actions"><button class="secondary-btn" onclick="closeModalButton()" data-i18n="common.cancel">Cancel</button><button class="primary-btn" onclick="saveStop()" data-i18n="common.save">Save</button></div></div></div></template>
+<template id="outfitModalTpl"><div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card"><div class="modal-handle"></div><h3 data-i18n="outfitModal.title">Add outfit</h3><input id="outfitTitle" class="modal-input" data-ph-en="Look name / event" data-ph-zh="穿搭名称 / 活动"><input id="outfitDate" class="modal-input" type="date"><textarea id="outfitNote" class="modal-input" data-ph-en="Items / notes" data-ph-zh="单品 / 备注"></textarea><div class="modal-actions"><button class="secondary-btn" onclick="closeModalButton()" data-i18n="common.cancel">Cancel</button><button class="primary-btn" onclick="saveOutfit()" data-i18n="common.save">Save</button></div></div></div></template>
+<script src="app.js"></script>
+</body></html>
