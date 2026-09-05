@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f2ee" />
+  <title>Voyā — Travel OOTD & Packing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" onclick="navigate('home')">Voyā</div>
+      <button id="langToggle" class="ghost-btn" aria-label="Toggle language">中</button>
+    </header>
+
+    <main id="app"></main>
+
+    <nav id="bottomNav" class="bottom-nav hidden">
+      <button data-nav="home" class="nav-item active"><span>⌂</span><small data-i18n="nav.home">Home</small></button>
+      <button data-nav="packing" class="nav-item"><span>▣</span><small data-i18n="nav.packing">Packing</small></button>
+      <button data-nav="outfits" class="nav-item"><span>♡</span><small data-i18n="nav.outfits">Outfits</small></button>
+      <button data-nav="shared" class="nav-item"><span>◎</span><small data-i18n="nav.shared">Shared</small></button>
+    </nav>
+  </div>
+
+  <template id="homeTpl">
+    <section class="hero-card screen-pad">
+      <div class="hero-overlay"></div>
+      <div class="hero-copy">
+        <div class="eyebrow" data-i18n="home.eyebrow">YOUR NEXT TRIP</div>
+        <h1><span data-i18n="home.title1">Pack light.</span><br><span data-i18n="home.title2">Travel beautifully.</span></h1>
+        <p data-i18n="home.subtitle">Plan outfits, split shared items, and know exactly who brings what.</p>
+        <button class="primary-btn" onclick="navigate('create')" data-i18n="home.start">Plan a trip</button>
+      </div>
+    </section>
+  </template>
+
+  <template id="createTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <button class="back-btn" onclick="navigate('home')">←</button>
+        <div>
+          <h2 data-i18n="create.title">Create a Trip</h2>
+          <p data-i18n="create.subtitle">Tell me where you're going and I'll help you pack.</p>
+        </div>
+      </div>
+
+      <label class="field-label" data-i18n="create.destination">Destination</label>
+      <div class="input-card">📍 <input id="destination" value="Italy — Milan, Amalfi, Rome" /></div>
+
+      <label class="field-label" data-i18n="create.dates">Travel dates</label>
+      <div class="input-card">🗓 <input id="dates" value="Sep 27, 2026 — Oct 6, 2026" /></div>
+
+      <label class="field-label" data-i18n="create.triptype">Trip type</label>
+      <div class="choice-grid three">
+        <button class="choice active">✈️<span data-i18n="create.leisure">Leisure</span></button>
+        <button class="choice">💼<span data-i18n="create.business">Business</span></button>
+        <button class="choice">♡<span data-i18n="create.family">Family</span></button>
+      </div>
+
+      <label class="field-label" data-i18n="create.withwho">Who's coming?</label>
+      <div class="choice-grid three">
+        <button class="choice">◯<span data-i18n="create.solo">Solo</span></button>
+        <button class="choice active">👯<span data-i18n="create.friends">Friends</span></button>
+        <button class="choice">♡<span data-i18n="create.couple">Couple</span></button>
+      </div>
+
+      <button class="primary-btn wide" onclick="navigate('members')" data-i18n="common.next">Next</button>
+    </section>
+  </template>
+
+  <template id="membersTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <button class="back-btn" onclick="navigate('create')">←</button>
+        <div>
+          <h2 data-i18n="members.title">Travel Together</h2>
+          <p data-i18n="members.subtitle">Invite friends and decide who brings shared items.</p>
+        </div>
+      </div>
+
+      <div class="members-list" id="membersList"></div>
+      <button class="secondary-btn wide" onclick="openAddMember()">＋ <span data-i18n="members.add">Add a traveler</span></button>
+
+      <div class="soft-card invite-card">
+        <div>
+          <div class="mini-title" data-i18n="members.inviteTitle">Invite by link</div>
+          <p data-i18n="members.inviteCopy">Friends can join the trip and update their own packing list.</p>
+        </div>
+        <button class="mini-btn" onclick="copyInvite()" data-i18n="members.copy">Copy link</button>
+      </div>
+
+      <button class="primary-btn wide" onclick="navigate('activities')" data-i18n="common.continue">Continue</button>
+    </section>
+  </template>
+
+  <template id="activitiesTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <button class="back-btn" onclick="navigate('members')">←</button>
+        <div>
+          <h2 data-i18n="activities.title">Select Activities</h2>
+          <p data-i18n="activities.subtitle">We'll tailor outfit and packing suggestions around your plans.</p>
+        </div>
+      </div>
+      <div class="activity-grid" id="activityGrid"></div>
+      <button class="primary-btn wide" onclick="navigate('overview')" data-i18n="activities.generate">Build my packing plan</button>
+    </section>
+  </template>
+
+  <template id="overviewTpl">
+    <section>
+      <div class="overview-hero screen-pad">
+        <div class="section-head light-gap">
+          <button class="back-btn" onclick="navigate('activities')">←</button>
+          <div class="trip-title-wrap">
+            <div class="eyebrow" data-i18n="overview.trip">TRIP OVERVIEW</div>
+            <h2>Italy</h2>
+            <p>Sep 27 — Oct 6, 2026</p>
+          </div>
+        </div>
+        <div class="weather-pill">☀️ 18–26°C · <span data-i18n="overview.sunny">Mostly sunny</span></div>
+      </div>
+      <div class="screen-pad compact-top">
+        <div class="stat-row">
+          <div class="stat"><strong>3</strong><small data-i18n="overview.cities">Cities</small></div>
+          <div class="stat"><strong>10</strong><small data-i18n="overview.days">Days</small></div>
+          <div class="stat"><strong>2</strong><small data-i18n="overview.travelers">Travelers</small></div>
+        </div>
+
+        <h3 data-i18n="overview.itinerary">Itinerary</h3>
+        <div class="itinerary-list">
+          <div class="it-card"><div class="city-thumb milan">M</div><div><b>Milan</b><small>Sep 27 — Sep 29</small></div><span>›</span></div>
+          <div class="it-card"><div class="city-thumb amalfi">A</div><div><b>Amalfi</b><small>Sep 29 — Oct 3</small></div><span>›</span></div>
+          <div class="it-card"><div class="city-thumb rome">R</div><div><b>Rome</b><small>Oct 3 — Oct 6</small></div><span>›</span></div>
+        </div>
+
+        <div class="quick-actions">
+          <button onclick="navigate('outfits')"><span>♡</span><b data-i18n="overview.outfits">See outfits</b></button>
+          <button onclick="navigate('packing')"><span>▣</span><b data-i18n="overview.pack">Packing list</b></button>
+          <button onclick="navigate('shared')"><span>◎</span><b data-i18n="overview.shared">Shared items</b></button>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <template id="outfitsTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <div><h2 data-i18n="outfits.title">Your Outfit Plan</h2><p data-i18n="outfits.subtitle">10 days · 12 core pieces · 21 looks</p></div>
+      </div>
+      <div class="tabs"><button class="active" data-i18n="outfits.mine">My looks</button><button data-i18n="outfits.friend">Mia's looks</button></div>
+      <div id="outfitCards"></div>
+    </section>
+  </template>
+
+  <template id="packingTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <div><h2 data-i18n="packing.title">Packing List</h2><p data-i18n="packing.subtitle">Your personal list</p></div>
+      </div>
+      <div class="progress-card"><div><b id="packProgressText">9 / 24</b><small data-i18n="packing.packed">packed</small></div><div class="progress"><span id="packProgressBar"></span></div></div>
+      <div class="packing-filters"><button class="active" data-filter="all" data-i18n="packing.all">All</button><button data-filter="clothes" data-i18n="packing.clothes">Clothes</button><button data-filter="essentials" data-i18n="packing.essentials">Essentials</button></div>
+      <div id="packingList"></div>
+      <button class="secondary-btn wide" onclick="addPackingItem()">＋ <span data-i18n="packing.add">Add item</span></button>
+    </section>
+  </template>
+
+  <template id="sharedTpl">
+    <section class="screen-pad">
+      <div class="section-head">
+        <div><h2 data-i18n="shared.title">Shared Items</h2><p data-i18n="shared.subtitle">Split responsibilities. No duplicates.</p></div>
+      </div>
+      <div class="shared-summary">
+        <div><strong>8</strong><small data-i18n="shared.assigned">Assigned</small></div>
+        <div><strong>2</strong><small data-i18n="shared.unassigned">Unassigned</small></div>
+        <div><strong>5</strong><small data-i18n="shared.packed">Packed</small></div>
+      </div>
+      <div id="sharedList"></div>
+      <button class="secondary-btn wide" onclick="addSharedItem()">＋ <span data-i18n="shared.add">Add shared item</span></button>
+    </section>
+  </template>
+
+  <template id="modalTpl">
+    <div class="modal-backdrop" onclick="closeModal(event)">
+      <div class="modal-card">
+        <div class="modal-handle"></div>
+        <h3 data-i18n="modal.addTraveler">Add a traveler</h3>
+        <input id="newMemberName" class="modal-input" placeholder="Name" />
+        <button class="primary-btn wide" onclick="saveMember()" data-i18n="modal.add">Add</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
