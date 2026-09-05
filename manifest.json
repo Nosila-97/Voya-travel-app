@@ -1,0 +1,17 @@
+{
+  "name": "Voyā — Travel OOTD & Packing",
+  "short_name": "Voyā",
+  "description": "Travel outfit and packing planner with shared trip packing.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f2ee",
+  "theme_color": "#f7f2ee",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
