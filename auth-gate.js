@@ -71,8 +71,19 @@ async function refreshAccountButton(){
 
 async function initVoyaGate(){
   ensureGateStyles();
-  const {data}=await authSb.auth.getSession();
-  if(data.session){hideGate();refreshAccountButton()}else showGate();
+  const params=new URLSearchParams(location.search);
+  const forceLogin=params.get('login')==='1';
+  if(forceLogin){
+    await authSb.auth.signOut();
+    params.delete('login');
+    const next=location.pathname+(params.toString()?`?${params.toString()}`:'');
+    history.replaceState({},'',next);
+    document.querySelector('.voya-account-btn')?.remove();
+    showGate();
+  }else{
+    const {data}=await authSb.auth.getSession();
+    if(data.session){hideGate();refreshAccountButton()}else showGate();
+  }
   authSb.auth.onAuthStateChange((_event,session)=>{if(session){hideGate();setTimeout(refreshAccountButton,0)}else showGate()});
 }
 
