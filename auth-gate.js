@@ -29,6 +29,11 @@ function showGate(){ensureGateStyles();if(!document.getElementById('voyaLoginGat
 function hideGate(){document.getElementById('voyaLoginGate')?.classList.remove('show');document.body.style.overflow='';document.getElementById('voyaAuthModal')?.remove()}
 function gateError(msg=''){const e=document.getElementById('gateError');if(e)e.textContent=msg}
 
+function finishAuthAndReload(){
+  gateError(gateText('Loading your trips…','正在加载你的 Trips…'));
+  setTimeout(()=>location.reload(),120);
+}
+
 async function voyaGateSignIn(){
   const email=document.getElementById('gateEmail')?.value.trim();
   const password=document.getElementById('gatePassword')?.value;
@@ -37,8 +42,7 @@ async function voyaGateSignIn(){
   const {data,error}=await authSb.auth.signInWithPassword({email,password});
   if(error)return gateError(error.message);
   if(!data.session)return gateError(gateText('Could not start a session.','无法建立登录会话。'));
-  gateError('');hideGate();showToast?.(gateText('Signed in ✓','登录成功 ✓'));await refreshAccountButton();
-  if(typeof acceptInviteFromUrl==='function')acceptInviteFromUrl();
+  finishAuthAndReload();
 }
 
 async function voyaGateSignUp(){
@@ -51,8 +55,7 @@ async function voyaGateSignUp(){
   if(!data.session){
     return gateError(gateText('The backend still requires email confirmation. Turn off Confirm email in Supabase Auth settings, then try again.','后台目前仍要求邮箱验证。需要先在 Supabase Auth 里关闭 Confirm email，再重新注册。'));
   }
-  gateError('');hideGate();showToast?.(gateText('Account created ✓','注册成功 ✓'));await refreshAccountButton();
-  if(typeof acceptInviteFromUrl==='function')acceptInviteFromUrl();
+  finishAuthAndReload();
 }
 
 async function voyaSignOut(){
@@ -92,7 +95,7 @@ initVoyaGate();
 
 if(!document.querySelector('script[data-voya-cropper]')){
   const cropperScript=document.createElement('script');
-  cropperScript.src='cropper.js';
+  cropperScript.src='cropper.js?v=20260908b';
   cropperScript.dataset.voyaCropper='1';
   document.body.appendChild(cropperScript);
 }
