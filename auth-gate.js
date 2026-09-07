@@ -95,7 +95,14 @@ initVoyaGate();
 
 if(!document.querySelector('script[data-voya-cropper]')){
   const cropperScript=document.createElement('script');
-  cropperScript.src='cropper.js?v=20260908b';
+  cropperScript.src='cropper.js?v=20260908c';
   cropperScript.dataset.voyaCropper='1';
   document.body.appendChild(cropperScript);
+}
+
+if(!document.querySelector('script[data-voya-flex-pack]')){
+  const flexPackScript=document.createElement('script');
+  flexPackScript.src='flexible-pack.js?v=20260908c';
+  flexPackScript.dataset.voyaFlexPack='1';
+  document.body.appendChild(flexPackScript);
 }
