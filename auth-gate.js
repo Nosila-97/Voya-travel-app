@@ -76,3 +76,11 @@ async function initVoyaGate(){
 
 window.voyaGuestContinue=voyaGuestContinue;window.voyaSignOut=voyaSignOut;
 initVoyaGate();
+
+// Load the lightweight packing photo cropper after the main app is ready.
+if(!document.querySelector('script[data-voya-cropper]')){
+  const cropperScript=document.createElement('script');
+  cropperScript.src='cropper.js';
+  cropperScript.dataset.voyaCropper='1';
+  document.body.appendChild(cropperScript);
+}
