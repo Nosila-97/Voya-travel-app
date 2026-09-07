@@ -122,4 +122,12 @@
 
   // Apply packing-card fixes immediately, including for existing saved photos.
   ensureCropStyles();
+
+  // Load flexible packing rules after the base app so optional fields override defaults.
+  if(!document.querySelector('script[data-voya-flex-pack]')){
+    const flex=document.createElement('script');
+    flex.src='flexible-pack.js?v=20260908a';
+    flex.dataset.voyaFlexPack='1';
+    document.body.appendChild(flex);
+  }
 })();
