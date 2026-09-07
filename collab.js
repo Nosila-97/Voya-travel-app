@@ -187,13 +187,12 @@ async function nativeShareTrip(){
 function injectShareButton(){
   const top=document.querySelector('.overview-top');
   if(!top||document.getElementById('voyaShareBtn')) return;
-  const actions=top.querySelector('.round-btn')?.parentElement===top ? top : null;
   const btn=document.createElement('button');
   btn.id='voyaShareBtn'; btn.className='voya-share-btn'; btn.textContent=collabText('Share','共享'); btn.onclick=shareCurrentTrip;
   const edit=top.querySelector('.round-btn');
   if(edit){const wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:8px;align-items:center';edit.replaceWith(wrap);wrap.append(edit,btn);}else top.appendChild(btn);
   const tr=currentTrip();
-  if(tr?.cloudId){
+  if(tr?.cloudId && !document.querySelector('.voya-cloud-pill')){
     const hero=document.querySelector('.overview-hero');
     const pill=document.createElement('div');pill.className='voya-cloud-pill';pill.textContent=collabText('☁ Shared & syncing','☁ 已共享 · 实时同步');hero?.appendChild(pill);
   }
@@ -266,4 +265,14 @@ window.shareCurrentTrip=shareCurrentTrip;
 window.copyShareLink=copyShareLink;
 window.nativeShareTrip=nativeShareTrip;
 
-initCollab();
+// The original app's hydrate() keeps a direct reference to renderTrip, so wrapping
+// window.renderTrip alone is not enough on every browser/PWA launch. Observe screen
+// renders and inject Share whenever the Trip overview is present.
+const voyaShareObserver = new MutationObserver(()=>{
+  if(document.querySelector('.overview-top')) injectShareButton();
+});
+voyaShareObserver.observe(document.getElementById('app'),{childList:true,subtree:true});
+
+initCollab().then(()=>{
+  if(document.querySelector('.overview-top')) injectShareButton();
+});
