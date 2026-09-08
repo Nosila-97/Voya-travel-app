@@ -11,7 +11,7 @@
     s.textContent=`
       /* Packing cards: always keep a square image area, but show the whole photo. */
       .pack-grid{gap:9px!important}
-      .pack-card{border-radius:16px!important}
+      .pack-card.has-photo{border-radius:16px!important}
       .pack-photo{aspect-ratio:1/1!important;background:#f3efec!important;overflow:hidden!important}
       .pack-photo img{width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;display:block!important}
       .pack-card-body{padding:9px!important}
@@ -96,7 +96,7 @@
     if(!cropState)return;
     const {stage,img,scale,x,y,naturalW,naturalH}=cropState;
     const side=stage.clientWidth;
-    const out=900;
+    const out=640;
     const c=document.createElement('canvas');c.width=out;c.height=out;
     const ctx=c.getContext('2d');ctx.fillStyle='#f3efec';ctx.fillRect(0,0,out,out);
     const factor=out/side;
@@ -104,7 +104,7 @@
     const dx=(side/2 + x)*factor - drawnW/2;
     const dy=(side/2 + y)*factor - drawnH/2;
     ctx.drawImage(img,dx,dy,drawnW,drawnH);
-    packDraftImage=c.toDataURL('image/jpeg',.82);
+    packDraftImage=c.toDataURL('image/jpeg',.76);
     closeCropper();
     if(typeof updatePackPhotoPreview==='function')updatePackPhotoPreview();
   }
@@ -123,11 +123,4 @@
   // Apply packing-card fixes immediately, including for existing saved photos.
   ensureCropStyles();
 
-  // Load flexible packing rules after the base app so optional fields override defaults.
-  if(!document.querySelector('script[data-voya-flex-pack]')){
-    const flex=document.createElement('script');
-    flex.src='flexible-pack.js?v=20260908a';
-    flex.dataset.voyaFlexPack='1';
-    document.body.appendChild(flex);
-  }
 })();
