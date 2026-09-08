@@ -17,6 +17,18 @@ const originalRenderTrip = window.renderTrip;
 const originalOpenTrip = window.openTrip;
 
 function collabText(en, zh){ return store.lang === 'en' ? en : zh; }
+function sessionDisplayName(session=collabSession){const saved=session?.user?.user_metadata?.display_name?.trim();return saved||(session?.user?.email||'Traveler').split('@')[0]}
+function applySessionDisplayName(session=collabSession){window.voyaCurrentUserName=sessionDisplayName(session)}
+window.voyaTripRosters=window.voyaTripRosters||{};
+async function refreshTripRoster(tr){
+  if(!tr?.cloudId||!collabSession)return;
+  const {data,error}=await sb.from('trip_members').select('user_id,role,display_name').eq('trip_id',tr.cloudId);
+  if(error){console.error('Voyā roster restore failed',error);return;}
+  const rows=data||[],ownName=sessionDisplayName(),nameOf=row=>row.display_name?.trim()||(row.user_id===collabSession.user.id?ownName:'');
+  const owner=rows.find(row=>row.role==='owner');
+  window.voyaTripRosters[tr.cloudId]={ownerName:nameOf(owner||{})||ownName,members:rows.filter(row=>row.role!=='owner'&&nameOf(row)).map(row=>({userId:row.user_id,name:nameOf(row),role:row.role}))};
+}
+
 function meaningfulTrip(tr){ return !!(tr && (tr.name || tr.destination || tr.startDate || tr.endDate || tr.members?.length || tr.packing?.length || tr.outfits?.length || tr.shared?.length)); }
 
 function injectCollabStyles(){
@@ -158,6 +170,7 @@ async function hydrateAllCloudTrips(){
       const i=store.trips.findIndex(t=>t.cloudId===row.trip_id || t.id===remote.id);
       if(i>=0) store.trips[i]=remote; else store.trips.push(remote);
     }
+    await Promise.all(store.trips.filter(tr=>tr.cloudId).map(tr=>refreshTripRoster(tr)));
     // Keep local-only drafts, but sort cloud trips by their own updatedAt when available.
     store.trips.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
     originalSaveStore(false);
@@ -249,7 +262,7 @@ function injectShareButton(){
 }
 
 window.renderTrip = function(){ originalRenderTrip(); injectShareButton(); };
-window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if(tr?.cloudId) subscribeTrip(tr.cloudId); };
+window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if(tr?.cloudId){subscribeTrip(tr.cloudId);refreshTripRoster(tr).then(()=>{if(currentTrip()?.id===tr.id)navigate(currentPage)});} };
 
 async function subscribeTrip(cloudId){
   if(!cloudId) return;
@@ -279,7 +292,7 @@ async function loadCloudTrip(cloudId){
   const remote=data.data; remote.cloudId=cloudId;
   const i=store.trips.findIndex(t=>t.cloudId===cloudId || t.id===remote.id);
   if(i>=0) store.trips[i]=remote; else store.trips.unshift(remote);
-  store.activeTripId=remote.id; originalSaveStore(false); subscribeTrip(cloudId); navigate('trip');
+  store.activeTripId=remote.id; await refreshTripRoster(remote); originalSaveStore(false); subscribeTrip(cloudId); navigate('trip');
 }
 
 async function acceptInviteFromUrl(){
@@ -293,6 +306,10 @@ async function acceptInviteFromUrl(){
 
 async function onSignedIn(session){
   collabSession=session;
+  applySessionDisplayName(session);
+  const displayName=sessionDisplayName(session);
+  const {error:nameSyncError}=await sb.rpc('sync_my_display_name',{p_display_name:displayName});
+  if(nameSyncError)console.error('Voyā display name sync failed',nameSyncError);
   await migrateLocalTripsToCloud();
   await hydrateAllCloudTrips();
   const tr=currentTrip(); if(tr?.cloudId) subscribeTrip(tr.cloudId);
