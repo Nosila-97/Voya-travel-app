@@ -128,7 +128,7 @@ window.saveStore = function(show=false){
   const tr=currentTrip();
   if(tr && collabSession && !applyingRemote && meaningfulTrip(tr)){
     clearTimeout(collabSyncTimer);
-    collabSyncTimer=setTimeout(()=>syncTripToCloud(tr),300);
+    collabSyncTimer=setTimeout(()=>syncTripToCloud(tr),700);
   }
 };
 
