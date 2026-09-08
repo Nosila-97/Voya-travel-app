@@ -18,6 +18,7 @@ function gateMarkup(){return `<div id="voyaLoginGate"><div class="voya-gate-card
   <div class="voya-gate-brand"><img src="assets/icon.svg" alt="Voyā"><b>Voyā</b></div>
   <h1>${gateText('Your trips, together.','一起规划每一次旅行')}</h1>
   <p>${gateText('Use your email and password to keep the same Voyā account across devices.','用邮箱和密码登录，这样换链接或换设备也能回到同一个 Voyā 账号。')}</p>
+  <input id="gateName" type="text" autocomplete="name" maxlength="60" placeholder="${gateText('Your name (for a new account)','你的名字（注册新账号时填写）')}">
   <input id="gateEmail" type="email" autocomplete="email" placeholder="Email">
   <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Password (6+ characters)">
   <div id="gateError" class="voya-gate-error"></div>
@@ -46,16 +47,43 @@ async function voyaGateSignIn(){
 }
 
 async function voyaGateSignUp(){
+  const name=document.getElementById('gateName')?.value.trim();
   const email=document.getElementById('gateEmail')?.value.trim();
   const password=document.getElementById('gatePassword')?.value;
+  if(!name)return gateError(gateText('Enter your name.','请输入你的名字。'));
   if(!email||!password||password.length<6)return gateError(gateText('Use a valid email and a password with at least 6 characters.','请输入有效邮箱，密码至少 6 位。'));
   gateError(gateText('Creating account…','正在创建账号…'));
-  const {data,error}=await authSb.auth.signUp({email,password});
+  const {data,error}=await authSb.auth.signUp({email,password,options:{data:{display_name:name}}});
   if(error)return gateError(error.message);
   if(!data.session){
     return gateError(gateText('The backend still requires email confirmation. Turn off Confirm email in Supabase Auth settings, then try again.','后台目前仍要求邮箱验证。需要先在 Supabase Auth 里关闭 Confirm email，再重新注册。'));
   }
   finishAuthAndReload();
+}
+
+function accountDisplayName(session){const saved=session?.user?.user_metadata?.display_name?.trim();return saved||(session?.user?.email||'Traveler').split('@')[0]}
+
+async function openVoyaProfile(){
+  const {data}=await authSb.auth.getSession();const session=data.session;if(!session)return showGate();
+  document.getElementById('voyaProfileModal')?.remove();
+  const name=accountDisplayName(session);
+  document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="voyaProfileModal"><div class="modal-card" onclick="event.stopPropagation()"><div class="modal-handle"></div><h3>${gateText('Your profile','你的资料')}</h3><p style="color:var(--muted);font-size:13px">${gateText('This name is shown to friends in shared trips.','这个名字会显示在你和朋友共享的 Trip 里。')}</p><input id="voyaProfileName" class="modal-input" maxlength="60" value="${escapeHtml(name)}" placeholder="${gateText('Your name','你的名字')}"><div id="voyaProfileError" class="voya-gate-error"></div><div class="modal-actions"><button class="secondary-btn" onclick="voyaSignOut()">${gateText('Log out','退出登录')}</button><button class="primary-btn" onclick="saveVoyaProfile()">${gateText('Save name','保存名字')}</button></div><button class="secondary-btn wide" onclick="document.getElementById('voyaProfileModal')?.remove()">${gateText('Cancel','取消')}</button></div></div>`);
+}
+
+async function saveVoyaProfile(){
+  const input=document.getElementById('voyaProfileName'),errorEl=document.getElementById('voyaProfileError');
+  const name=input?.value.trim();if(!name){if(errorEl)errorEl.textContent=gateText('Enter your name.','请输入你的名字。');return;}
+  if(errorEl)errorEl.textContent=gateText('Saving…','正在保存…');
+  const {data,error}=await authSb.auth.updateUser({data:{display_name:name}});
+  if(error){if(errorEl)errorEl.textContent=error.message;return;}
+  const {error:syncError}=await authSb.rpc('sync_my_display_name',{p_display_name:name});
+  if(syncError){if(errorEl)errorEl.textContent=syncError.message;return;}
+  window.voyaCurrentUserName=name;
+  if(data?.user&&collabSession)collabSession.user=data.user;
+  document.getElementById('voyaProfileModal')?.remove();
+  await refreshAccountButton();
+  if(typeof currentPage!=='undefined')navigate(currentPage);
+  showToast(gateText('Name saved ✓','名字已保存 ✓'));
 }
 
 async function voyaSignOut(){
@@ -68,8 +96,9 @@ async function refreshAccountButton(){
   const {data}=await authSb.auth.getSession();const session=data.session;
   if(!session)return;
   const wrap=document.querySelector('.top-actions');if(!wrap)return;
-  let b=document.getElementById('voyaAccountBtn');if(!b){b=document.createElement('button');b.id='voyaAccountBtn';b.className='voya-account-btn';b.onclick=voyaSignOut;wrap.prepend(b)}
-  b.textContent=(session.user.email||gateText('Account','账号'))+' · '+gateText('Log out','退出');
+  const name=accountDisplayName(session);window.voyaCurrentUserName=name;
+  let b=document.getElementById('voyaAccountBtn');if(!b){b=document.createElement('button');b.id='voyaAccountBtn';b.className='voya-account-btn';b.onclick=openVoyaProfile;wrap.prepend(b)}
+  b.textContent=name+' · '+gateText('Account','账号');
 }
 
 async function initVoyaGate(){
@@ -90,5 +119,5 @@ async function initVoyaGate(){
   authSb.auth.onAuthStateChange((_event,session)=>{if(session){hideGate();setTimeout(refreshAccountButton,0)}else showGate()});
 }
 
-window.voyaGateSignIn=voyaGateSignIn;window.voyaGateSignUp=voyaGateSignUp;window.voyaSignOut=voyaSignOut;
+window.voyaGateSignIn=voyaGateSignIn;window.voyaGateSignUp=voyaGateSignUp;window.openVoyaProfile=openVoyaProfile;window.saveVoyaProfile=saveVoyaProfile;window.voyaSignOut=voyaSignOut;
 initVoyaGate();
