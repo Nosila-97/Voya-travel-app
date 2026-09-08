@@ -1,7 +1,7 @@
 // Voyā account gate: email + password, no email-confirmation step in UI
 const VOYA_AUTH_URL='https://mczgismbhxmcolwaxayk.supabase.co';
 const VOYA_AUTH_KEY='sb_publishable_5t7y4fFoh_41pBK8gj5Cyw_zTRlQZZ0';
-const authSb=window.supabase.createClient(VOYA_AUTH_URL,VOYA_AUTH_KEY);
+const authSb=window.voyaSupabase||window.supabase.createClient(VOYA_AUTH_URL,VOYA_AUTH_KEY);
 
 function gateText(en,zh){try{return store.lang==='zh'?zh:en}catch(e){return en}}
 
