@@ -2,6 +2,7 @@
 const VOYA_SUPABASE_URL = 'https://mczgismbhxmcolwaxayk.supabase.co';
 const VOYA_SUPABASE_KEY = 'sb_publishable_5t7y4fFoh_41pBK8gj5Cyw_zTRlQZZ0';
 const sb = window.supabase.createClient(VOYA_SUPABASE_URL, VOYA_SUPABASE_KEY);
+window.voyaSupabase = sb;
 
 let collabSession = null;
 let collabChannel = null;
