@@ -147,6 +147,11 @@ async function hydrateAllCloudTrips(){
     const {data,error}=await sb.from('trip_documents').select('trip_id,data,updated_at').order('updated_at',{ascending:false});
     if(error){ console.error('Voyā cloud trip restore failed',error); return; }
     const remoteRows=data||[];
+    const remoteIds=new Set(remoteRows.map(row=>row.trip_id));
+    // A successful cloud read is authoritative for account-backed trips. This
+    // prevents deleted trips from surviving in localStorage on another device.
+    store.trips=store.trips.filter(tr=>!tr.cloudId||remoteIds.has(tr.cloudId));
+    if(!store.trips.some(tr=>tr.id===store.activeTripId)) store.activeTripId=store.trips[0]?.id||null;
     for(const row of remoteRows){
       if(!row?.data) continue;
       const remote=JSON.parse(JSON.stringify(row.data)); remote.cloudId=row.trip_id;
@@ -158,6 +163,49 @@ async function hydrateAllCloudTrips(){
     originalSaveStore(false);
     if(currentPage==='trips') navigate('trips');
   } finally { hydratingCloud=false; }
+}
+
+function removeCloudTripLocally(cloudId,localId){
+  store.trips=store.trips.filter(tr=>tr.id!==localId&&tr.cloudId!==cloudId);
+  if(!store.trips.some(tr=>tr.id===store.activeTripId)) store.activeTripId=store.trips[0]?.id||null;
+  originalSaveStore(false);
+  if(currentPage!=='trips') navigate('trips'); else renderTrips();
+}
+
+async function deleteTripEverywhere(id,confirmed=false){
+  const tr=store.trips.find(item=>item.id===id);
+  if(!tr) return;
+  if(!confirmed&&!confirm(collabText('Delete this trip?','确定删除这次旅行？'))) return;
+
+  clearTimeout(collabSyncTimer);
+  collabSyncTimer=null;
+
+  // A create may already be in flight after a recent edit. Wait for it so the
+  // newly created cloud row cannot bring the trip back after local deletion.
+  const pendingCreate=cloudingTrips.get(tr.id);
+  if(pendingCreate){
+    const createdId=await pendingCreate;
+    if(createdId&&!tr.cloudId) tr.cloudId=createdId;
+  }
+
+  if(tr.cloudId){
+    const ok=collabSession||await ensureCollabAuth(()=>deleteTripEverywhere(id,true));
+    if(!ok) return;
+    const cloudId=tr.cloudId;
+    const userId=collabSession.user.id;
+    const {data,error}=await sb.from('trips').delete().eq('id',cloudId).eq('owner_id',userId).select('id');
+    if(error||!data?.length){
+      console.error('Voyā cloud trip delete failed',error||'No row deleted');
+      showToast(collabText('Could not delete the trip. Please try again.','删除失败，请再试一次。'));
+      return;
+    }
+    if(collabChannel){ await sb.removeChannel(collabChannel); collabChannel=null; }
+    removeCloudTripLocally(cloudId,tr.id);
+  }else{
+    removeCloudTripLocally(null,tr.id);
+  }
+
+  showToast(collabText('Trip deleted permanently ✓','旅行已永久删除 ✓'));
 }
 
 async function makeTripCloud(tr){
@@ -206,7 +254,8 @@ window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if
 async function subscribeTrip(cloudId){
   if(!cloudId) return;
   if(collabChannel){ await sb.removeChannel(collabChannel); collabChannel=null; }
-  collabChannel=sb.channel(`voya-trip-${cloudId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trip_documents',filter:`trip_id=eq.${cloudId}`},payload=>{
+  collabChannel=sb.channel(`voya-trip-${cloudId}`).on('postgres_changes',{event:'*',schema:'public',table:'trip_documents',filter:`trip_id=eq.${cloudId}`},payload=>{
+    if(payload.eventType==='DELETE'){ removeCloudTripLocally(cloudId); return; }
     const row=payload.new; if(!row?.data || row.updated_by===collabSession?.user?.id) return; applyRemoteTrip(cloudId,row.data);
   }).subscribe();
 }
@@ -263,6 +312,7 @@ async function initCollab(){
 window.collabSignIn=collabSignIn; window.collabSignUp=collabSignUp; window.closeCollabAuth=closeCollabAuth;
 window.shareCurrentTrip=shareCurrentTrip; window.copyShareLink=copyShareLink; window.nativeShareTrip=nativeShareTrip;
 window.voyaHydrateCloudTrips=hydrateAllCloudTrips; window.voyaMigrateTrips=migrateLocalTripsToCloud;
+window.deleteTrip=deleteTripEverywhere;
 
 const voyaShareObserver = new MutationObserver(()=>{ if(document.querySelector('.overview-top')) injectShareButton(); });
 voyaShareObserver.observe(document.getElementById('app'),{childList:true,subtree:true});
