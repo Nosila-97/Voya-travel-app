@@ -87,6 +87,7 @@ async function saveVoyaProfile(){
 }
 
 async function voyaSignOut(){
+  document.getElementById('voyaProfileModal')?.remove();
   await authSb.auth.signOut();
   document.querySelector('.voya-account-btn')?.remove();
   showGate();
