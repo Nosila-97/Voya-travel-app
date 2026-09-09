@@ -174,7 +174,7 @@ async function hydrateAllCloudTrips(){
     // Keep local-only drafts, but sort cloud trips by their own updatedAt when available.
     store.trips.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
     originalSaveStore(false);
-    if(currentPage==='trips') navigate('trips');
+    if(currentPage==='trips'||currentPage==='trip') navigate(currentPage);
   } finally { hydratingCloud=false; }
 }
 
@@ -264,13 +264,29 @@ function injectShareButton(){
 window.renderTrip = function(){ originalRenderTrip(); injectShareButton(); };
 window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if(tr?.cloudId){subscribeTrip(tr.cloudId);refreshTripRoster(tr).then(()=>{if(currentTrip()?.id===tr.id)navigate(currentPage)});} };
 
+let activeRosterRefresh=null;
+async function refreshActiveTripView(){
+  if(activeRosterRefresh)return activeRosterRefresh;
+  const tr=currentTrip();
+  if(!tr?.cloudId||!collabSession||currentPage!=='trip')return;
+  const localId=tr.id;
+  activeRosterRefresh=(async()=>{
+    await refreshTripRoster(tr);
+    if(currentTrip()?.id===localId&&currentPage==='trip'&&!document.querySelector('.modal-backdrop'))navigate('trip');
+  })();
+  try{await activeRosterRefresh;}finally{activeRosterRefresh=null;}
+}
+
 async function subscribeTrip(cloudId){
   if(!cloudId) return;
   if(collabChannel){ await sb.removeChannel(collabChannel); collabChannel=null; }
-  collabChannel=sb.channel(`voya-trip-${cloudId}`).on('postgres_changes',{event:'*',schema:'public',table:'trip_documents',filter:`trip_id=eq.${cloudId}`},payload=>{
+  collabChannel=sb.channel(`voya-trip-${cloudId}`)
+  .on('postgres_changes',{event:'*',schema:'public',table:'trip_documents',filter:`trip_id=eq.${cloudId}`},payload=>{
     if(payload.eventType==='DELETE'){ removeCloudTripLocally(cloudId); return; }
     const row=payload.new; if(!row?.data || row.updated_by===collabSession?.user?.id) return; applyRemoteTrip(cloudId,row.data);
-  }).subscribe();
+  })
+  .on('postgres_changes',{event:'*',schema:'public',table:'trip_members',filter:`trip_id=eq.${cloudId}`},()=>refreshActiveTripView())
+  .subscribe();
 }
 
 function applyRemoteTrip(cloudId,remote){
@@ -334,4 +350,6 @@ window.deleteTrip=deleteTripEverywhere;
 const voyaShareObserver = new MutationObserver(()=>{ if(document.querySelector('.overview-top')) injectShareButton(); });
 voyaShareObserver.observe(document.getElementById('app'),{childList:true,subtree:true});
 
+window.addEventListener('pageshow',()=>setTimeout(refreshActiveTripView,0));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(refreshActiveTripView,0)});
 initCollab().then(()=>{ if(document.querySelector('.overview-top')) injectShareButton(); });
