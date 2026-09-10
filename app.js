@@ -46,10 +46,10 @@ const clothingSubcategories={
   dresses:{en:'Dresses',zh:'连衣裙',items:['Dress','Mini dress','Midi dress','Maxi dress','Jumpsuit']}
 };
 const clothingKeywords={
-  dresses:['dress','jumpsuit'],
-  outerwear:['jacket','coat','blazer','trench','cardigan'],
-  bottoms:['pants','jeans','shorts','skirt','leggings','sock'],
-  tops:['t-shirt','tank','shirt','blouse','crop','sweater','hoodie','sleepwear','underwear','swimsuit']
+  dresses:['dress','jumpsuit','连衣裙'],
+  outerwear:['jacket','coat','blazer','trench','cardigan','外套','夹克','大衣','西装','风衣'],
+  bottoms:['pants','jeans','shorts','skirt','leggings','sock','裤','裙','牛仔'],
+  tops:['t-shirt','tank','shirt','blouse','crop','sweater','hoodie','sleepwear','underwear','swimsuit','top','上衣','吊带','衬衫','背心','毛衣','睡衣','泳衣']
 };
 function itemSubcategory(item={}){if(item.subcat&&clothingSubcategories[item.subcat])return item.subcat;const value=String(item.type||item.name||'').toLowerCase();for(const [key,words] of Object.entries(clothingKeywords)){if(words.some(word=>value.includes(word)))return key}return'tops'}
 function clothingSubcategoryLabel(key){const group=clothingSubcategories[key]||clothingSubcategories.tops;return store.lang==='en'?group.en:group.zh}
