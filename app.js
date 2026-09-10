@@ -43,13 +43,17 @@ const clothingSubcategories={
   tops:{en:'Tops',zh:'上装',items:['T-shirt','Tank top','Shirt','Blouse','Crop top','Sweater / cardigan','Hoodie']},
   bottoms:{en:'Bottoms',zh:'下装',items:['Pants','Jeans','Shorts','Skirt','Leggings']},
   outerwear:{en:'Outerwear',zh:'外套',items:['Jacket','Coat','Blazer','Trench coat','Rain jacket']},
-  dresses:{en:'Dresses',zh:'连衣裙',items:['Dress','Mini dress','Midi dress','Maxi dress','Jumpsuit']}
+  dresses:{en:'Dresses',zh:'连衣裙',items:['Dress','Mini dress','Midi dress','Maxi dress','Jumpsuit']},
+  swimwear:{en:'Swimwear',zh:'泳衣',items:['Swimsuit','Bikini','Bikini top','Bikini bottom','Cover-up']},
+  gym:{en:'Gym',zh:'Gym',items:['Sports bra','Workout top','Gym shorts','Workout leggings','Training set']}
 };
 const clothingKeywords={
+  swimwear:['swimsuit','swimwear','bikini','cover-up','泳衣','比基尼'],
+  gym:['gym','workout','sports bra','training set','activewear','运动','健身','瑜伽'],
   dresses:['dress','jumpsuit','连衣裙'],
   outerwear:['jacket','coat','blazer','trench','cardigan','外套','夹克','大衣','西装','风衣'],
   bottoms:['pants','jeans','shorts','skirt','leggings','sock','裤','裙','牛仔'],
-  tops:['t-shirt','tank','shirt','blouse','crop','sweater','hoodie','sleepwear','underwear','swimsuit','top','上衣','吊带','衬衫','背心','毛衣','睡衣','泳衣']
+  tops:['t-shirt','tank','shirt','blouse','crop','sweater','hoodie','sleepwear','underwear','top','上衣','吊带','衬衫','背心','毛衣','睡衣']
 };
 function itemSubcategory(item={}){if(item.subcat&&clothingSubcategories[item.subcat])return item.subcat;const value=String(item.type||item.name||'').toLowerCase();for(const [key,words] of Object.entries(clothingKeywords)){if(words.some(word=>value.includes(word)))return key}return'tops'}
 function clothingSubcategoryLabel(key){const group=clothingSubcategories[key]||clothingSubcategories.tops;return store.lang==='en'?group.en:group.zh}
