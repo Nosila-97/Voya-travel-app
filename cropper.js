@@ -96,7 +96,7 @@
     if(!cropState)return;
     const {stage,img,scale,x,y,naturalW,naturalH}=cropState;
     const side=stage.clientWidth;
-    const out=640;
+    const out=560;
     const c=document.createElement('canvas');c.width=out;c.height=out;
     const ctx=c.getContext('2d');ctx.fillStyle='#f3efec';ctx.fillRect(0,0,out,out);
     const factor=out/side;
@@ -104,7 +104,7 @@
     const dx=(side/2 + x)*factor - drawnW/2;
     const dy=(side/2 + y)*factor - drawnH/2;
     ctx.drawImage(img,dx,dy,drawnW,drawnH);
-    packDraftImage=c.toDataURL('image/jpeg',.76);
+    packDraftImage=c.toDataURL('image/jpeg',.68);
     closeCropper();
     if(typeof updatePackPhotoPreview==='function')updatePackPhotoPreview();
   }
