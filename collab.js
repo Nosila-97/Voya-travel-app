@@ -26,7 +26,8 @@ async function refreshTripRoster(tr){
   if(error){console.error('Voyā roster restore failed',error);return;}
   const rows=data||[],ownName=sessionDisplayName(),nameOf=row=>row.display_name?.trim()||(row.user_id===collabSession.user.id?ownName:'');
   const owner=rows.find(row=>row.role==='owner');
-  window.voyaTripRosters[tr.cloudId]={ownerName:nameOf(owner||{})||ownName,members:rows.filter(row=>row.role!=='owner'&&nameOf(row)).map(row=>({userId:row.user_id,name:nameOf(row),role:row.role}))};
+  window.voyaTripRosters[tr.cloudId]={ownerName:nameOf(owner||{})||ownName,count:rows.length,members:rows.filter(row=>row.role!=='owner'&&nameOf(row)).map(row=>({userId:row.user_id,name:nameOf(row),role:row.role}))};
+  tr.cloudTravelerCount=rows.length;
 }
 
 function meaningfulTrip(tr){ return !!(tr && (tr.name || tr.destination || tr.startDate || tr.endDate || tr.members?.length || tr.packing?.length || tr.outfits?.length || tr.shared?.length)); }
@@ -267,12 +268,19 @@ window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if
 let activeRosterRefresh=null;
 async function refreshActiveTripView(){
   if(activeRosterRefresh)return activeRosterRefresh;
-  const tr=currentTrip();
-  if(!tr?.cloudId||!collabSession||currentPage!=='trip')return;
-  const localId=tr.id;
+  if(!collabSession)return;
+  const page=currentPage,tr=currentTrip(),localId=tr?.id;
   activeRosterRefresh=(async()=>{
+    if(page==='trips'){
+      await Promise.all(store.trips.filter(item=>item.cloudId).map(item=>refreshTripRoster(item)));
+      originalSaveStore(false);
+      if(currentPage==='trips'&&!document.querySelector('.modal-backdrop'))renderTrips();
+      return;
+    }
+    if(!tr?.cloudId)return;
     await refreshTripRoster(tr);
-    if(currentTrip()?.id===localId&&currentPage==='trip'&&!document.querySelector('.modal-backdrop'))navigate('trip');
+    originalSaveStore(false);
+    if(currentTrip()?.id===localId&&currentPage===page&&!document.querySelector('.modal-backdrop'))navigate(page);
   })();
   try{await activeRosterRefresh;}finally{activeRosterRefresh=null;}
 }
