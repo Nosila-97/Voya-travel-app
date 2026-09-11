@@ -105,7 +105,7 @@ async function ensureCollabAuth(after){
 
 const PACKING_IMAGE_BUCKET='voya-packing-images';
 function serializableTrip(tr){const copy=JSON.parse(JSON.stringify(tr));copy.cloudId=tr.cloudId||null;(copy.packing||[]).forEach(item=>{if(item.imagePath)item.image='';delete item.imageRemote;delete item.pendingImageDelete});delete copy.pendingImageDeletes;return copy}
-function mergePackingImages(target,source){const sourceById=new Map((source?.packing||[]).map(item=>[item.id,item])),packing=target?.packing||[];let recovered=0;target.packing=packing.map(item=>{if(item.imageCleared)return item;const sourceItem=sourceById.get(item.id);if(!sourceItem)return item;const merged={...item};if(!merged.imagePath&&sourceItem.imagePath){merged.imagePath=sourceItem.imagePath;recovered++}if(!merged.image&&sourceItem.image){merged.image=sourceItem.image;recovered++}return merged});return recovered}
+function mergePackingImages(target,source){const sourceById=new Map((source?.packing||[]).map(item=>[item.id,item])),packing=target?.packing||[];let recovered=0;target.packing=packing.map(item=>{if(item.imageCleared)return item;const sourceItem=sourceById.get(item.id);if(!sourceItem)return item;const merged={...item};if(!merged.imagePath&&sourceItem.imagePath){merged.imagePath=sourceItem.imagePath;recovered++}if(!merged.image&&!merged.imagePath&&sourceItem.image){merged.image=sourceItem.image;recovered++}return merged});return recovered}
 function packingDataUrlToBlob(dataUrl){const parts=dataUrl.split(','),mime=parts[0]?.match(/data:([^;]+)/)?.[1]||'image/jpeg',bytes=atob(parts[1]||''),array=new Uint8Array(bytes.length);for(let i=0;i<bytes.length;i++)array[i]=bytes.charCodeAt(i);return new Blob([array],{type:mime})}
 async function uploadPackingImage(tr,item){if(!tr?.cloudId||!item?.id||!item.image?.startsWith('data:image/'))return false;const blob=packingDataUrlToBlob(item.image),extension=blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg',fileId=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2),path=`${tr.cloudId}/${item.id}/${fileId}.${extension}`;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).upload(path,blob,{contentType:blob.type,upsert:false,cacheControl:'31536000'});if(error){console.error('Voyā image upload failed',error);return false}item.imagePath=path;item.imageCleared=false;return true}
 async function removePackingImage(path){if(!path)return true;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).remove([path]);if(error){console.error('Voyā image removal failed',error);return false}return true}
@@ -139,11 +139,12 @@ async function createCloudTrip(tr){
 async function syncTripToCloud(tr){
   if(!tr || !collabSession || applyingRemote || !meaningfulTrip(tr)) return;
   if(!tr.cloudId){ const id=await createCloudTrip(tr); if(!id) return; }
+  const cloudId=tr.cloudId, userId=collabSession.user.id;
+  const {data:existing,error:readError}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).maybeSingle();
+  if(!readError&&existing?.data)mergePackingImages(tr,existing.data);
   await migrateTripImagesToStorage(tr);
   originalSaveStore(false);
-  const cloudId=tr.cloudId, userId=collabSession.user.id, data=serializableTrip(tr);
-  const {data:existing,error:readError}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).maybeSingle();
-  if(!readError&&existing?.data)mergePackingImages(data,existing.data);
+  const data=serializableTrip(tr);
   const {error}=await sb.from('trip_documents').upsert({trip_id:cloudId,data,updated_by:userId,updated_at:new Date().toISOString()},{onConflict:'trip_id'});
   if(error){ console.error('Voyā cloud sync failed',error); return; }
   mergePackingImages(tr,data);
@@ -183,7 +184,9 @@ async function hydrateAllCloudTrips(){
       if(!row?.data) continue;
       const remote=JSON.parse(JSON.stringify(row.data)); remote.cloudId=row.trip_id;
       const i=store.trips.findIndex(t=>t.cloudId===row.trip_id || t.id===remote.id),local=i>=0?store.trips[i]:null;
-      if(local&&mergePackingImages(remote,local))recoveredTrips.push(remote);
+      const recovered=local&&mergePackingImages(remote,local);
+      const needsStorageMigration=(remote.packing||[]).some(item=>item.image?.startsWith('data:image/')&&!item.imagePath);
+      if(recovered||needsStorageMigration)recoveredTrips.push(remote);
       if(i>=0) store.trips[i]=remote; else store.trips.push(remote);
     }
     await Promise.all(store.trips.filter(tr=>tr.cloudId).map(tr=>hydratePackingImageUrls(tr)));
