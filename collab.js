@@ -104,6 +104,7 @@ async function ensureCollabAuth(after){
 }
 
 function serializableTrip(tr){ const copy=JSON.parse(JSON.stringify(tr)); copy.cloudId=tr.cloudId||null; return copy; }
+function mergePackingImages(target,source){const sourceById=new Map((source?.packing||[]).map(item=>[item.id,item])),packing=target?.packing||[];let recovered=0;target.packing=packing.map(item=>{if(item.image||item.imageCleared)return item;const sourceItem=sourceById.get(item.id);if(sourceItem?.image){recovered++;return{...item,image:sourceItem.image}}return item});return recovered}
 
 async function createCloudTrip(tr){
   if(!tr || tr.cloudId || !collabSession || !meaningfulTrip(tr)) return tr?.cloudId||null;
@@ -132,8 +133,11 @@ async function syncTripToCloud(tr){
   if(!tr || !collabSession || applyingRemote || !meaningfulTrip(tr)) return;
   if(!tr.cloudId){ const id=await createCloudTrip(tr); if(!id) return; }
   const cloudId=tr.cloudId, userId=collabSession.user.id, data=serializableTrip(tr);
+  const {data:existing,error:readError}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).maybeSingle();
+  if(!readError&&existing?.data)mergePackingImages(data,existing.data);
   const {error}=await sb.from('trip_documents').upsert({trip_id:cloudId,data,updated_by:userId,updated_at:new Date().toISOString()},{onConflict:'trip_id'});
   if(error){ console.error('Voyā cloud sync failed',error); return; }
+  mergePackingImages(tr,data);
   await sb.from('trips').update({title:tr.name||tr.destination||'Trip',destination:tr.destination||null,starts_on:tr.startDate||null,ends_on:tr.endDate||null,updated_at:new Date().toISOString()}).eq('id',cloudId);
 }
 
@@ -165,17 +169,21 @@ async function hydrateAllCloudTrips(){
     // prevents deleted trips from surviving in localStorage on another device.
     store.trips=store.trips.filter(tr=>!tr.cloudId||remoteIds.has(tr.cloudId));
     if(!store.trips.some(tr=>tr.id===store.activeTripId)) store.activeTripId=store.trips[0]?.id||null;
+    const recoveredTrips=[];
     for(const row of remoteRows){
       if(!row?.data) continue;
       const remote=JSON.parse(JSON.stringify(row.data)); remote.cloudId=row.trip_id;
-      const i=store.trips.findIndex(t=>t.cloudId===row.trip_id || t.id===remote.id);
+      const i=store.trips.findIndex(t=>t.cloudId===row.trip_id || t.id===remote.id),local=i>=0?store.trips[i]:null;
+      if(local&&mergePackingImages(remote,local))recoveredTrips.push(remote);
       if(i>=0) store.trips[i]=remote; else store.trips.push(remote);
     }
     await Promise.all(store.trips.filter(tr=>tr.cloudId).map(tr=>refreshTripRoster(tr)));
     // Keep local-only drafts, but sort cloud trips by their own updatedAt when available.
     store.trips.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
     originalSaveStore(false);
-    if(currentPage==='trips'||currentPage==='trip') navigate(currentPage);
+    if(typeof cachePackingImages==='function')await cachePackingImages();
+    if(recoveredTrips.length)await Promise.all(recoveredTrips.map(tr=>syncTripToCloud(tr)));
+    if(currentPage==='trips'||currentPage==='trip'||currentPage==='packing'||currentPage==='outfits') navigate(currentPage);
   } finally { hydratingCloud=false; }
 }
 
@@ -331,6 +339,7 @@ async function acceptInviteFromUrl(){
 async function onSignedIn(session){
   collabSession=session;
   applySessionDisplayName(session);
+  if(window.voyaImageCacheReady)await window.voyaImageCacheReady;
   const displayName=sessionDisplayName(session);
   const {error:nameSyncError}=await sb.rpc('sync_my_display_name',{p_display_name:displayName});
   if(nameSyncError)console.error('Voyā display name sync failed',nameSyncError);
