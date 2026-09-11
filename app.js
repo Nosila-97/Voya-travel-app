@@ -1,5 +1,7 @@
 const KEY='voya-v4';
 const LEGACY='voya-v3';
+const IMAGE_CACHE_DB='voya-packing-images-v1';
+const IMAGE_CACHE_STORE='images';
 const uid=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2);
 const emptyTrip=()=>({id:uid(),name:'',destination:'',startDate:'',endDate:'',type:'leisure',members:[],activities:[],customActivities:[],stops:[],packing:[],shared:[],outfits:[],createdAt:Date.now(),updatedAt:Date.now()});
 let store=loadStore();
@@ -12,6 +14,7 @@ let outfitPerson='You';
 let outfitDraftItemIds=[];
 let outfitEditingId='';
 let outfitComposerSortables=[];
+let imageCacheTimer=null;
 let packDraftImage='';
 
 const dict={en:{
@@ -63,8 +66,12 @@ function clothingSubcategoryLabel(key){const group=clothingSubcategories[key]||c
 const sharedPreset=['Universal adapter','Sunscreen','Camera','Tripod','Hair dryer','First aid kit','Laundry detergent','Umbrella','Portable speaker','Snacks'];
 
 function loadStore(){try{let s=JSON.parse(localStorage.getItem(KEY)||'null');if(s?.trips)return s;const old=JSON.parse(localStorage.getItem(LEGACY)||'null');if(old?.trips){old.trips.forEach(tr=>{tr.packing=(tr.packing||[]).map(x=>({id:x.id||uid(),name:x.name||x.label||'Item',type:x.type||x.name||'Item',cat:x.cat||'clothes',person:x.person||'You',note:x.note||'',image:x.image||'',packed:!!x.packed}))});s={...old};localStorage.setItem(KEY,JSON.stringify(s));return s}return{lang:localStorage.getItem('voya-lang')||'en',trips:[],activeTripId:null}}catch(e){return{lang:'en',trips:[],activeTripId:null}}}
-function localCacheJson(){const snapshot=JSON.parse(JSON.stringify(store));snapshot.trips?.forEach(tr=>{tr.packing?.forEach(item=>{if(typeof item.image==='string'&&item.image.startsWith('data:image/'))item.image=''})});return JSON.stringify(snapshot)}
-function saveStore(show=false){const tr=currentTrip();if(tr)tr.updatedAt=Date.now();try{localStorage.setItem(KEY,JSON.stringify(store))}catch(error){console.warn('Voyā local cache full; caching without embedded photos',error);try{localStorage.setItem(KEY,localCacheJson())}catch(cacheError){console.warn('Voyā local cache unavailable',cacheError)}}if(show)showSaved()}
+function localCacheJson(){return JSON.stringify(store,(key,value)=>key==='image'&&typeof value==='string'&&value.startsWith('data:image/')?'':value)}
+function openPackingImageCache(){return new Promise((resolve,reject)=>{if(!window.indexedDB){reject(new Error('IndexedDB unavailable'));return}const request=indexedDB.open(IMAGE_CACHE_DB,1);request.onerror=()=>reject(request.error);request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(IMAGE_CACHE_STORE))db.createObjectStore(IMAGE_CACHE_STORE,{keyPath:'key'})};request.onsuccess=()=>resolve(request.result)})}
+async function cachePackingImages(){const records=[];store.trips?.forEach(tr=>tr.packing?.forEach(item=>{if(item.id&&typeof item.image==='string'&&item.image.startsWith('data:image/'))records.push({key:`${tr.id}::${item.id}`,tripId:tr.id,itemId:item.id,image:item.image,updatedAt:Date.now()})}));if(!records.length)return 0;let db;try{db=await openPackingImageCache();await new Promise((resolve,reject)=>{const tx=db.transaction(IMAGE_CACHE_STORE,'readwrite'),bucket=tx.objectStore(IMAGE_CACHE_STORE);records.forEach(record=>bucket.put(record));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});return records.length}catch(error){console.warn('Voyā image cache write failed',error);return 0}finally{db?.close()}}
+function schedulePackingImageCache(){clearTimeout(imageCacheTimer);imageCacheTimer=setTimeout(()=>cachePackingImages(),80)}
+async function restoreCachedPackingImages(){let db;try{db=await openPackingImageCache();const records=await new Promise((resolve,reject)=>{const tx=db.transaction(IMAGE_CACHE_STORE,'readonly'),request=tx.objectStore(IMAGE_CACHE_STORE).getAll();request.onsuccess=()=>resolve(request.result||[]);request.onerror=()=>reject(request.error)}),images=new Map(records.map(record=>[record.key,record.image]));let restored=0;store.trips?.forEach(tr=>tr.packing?.forEach(item=>{const cached=images.get(`${tr.id}::${item.id}`);if(!item.image&&cached){item.image=cached;restored++}}));if(restored&&['packing','outfits'].includes(currentPage)&&!document.querySelector('.modal-backdrop'))navigate(currentPage);return restored}catch(error){console.warn('Voyā image cache read failed',error);return 0}finally{db?.close()}}
+function saveStore(show=false){const tr=currentTrip();if(tr)tr.updatedAt=Date.now();schedulePackingImageCache();try{localStorage.setItem(KEY,localCacheJson())}catch(error){console.warn('Voyā local metadata cache unavailable',error)}if(show)showSaved()}
 function showSaved(){const el=document.getElementById('saveState');if(!el)return;el.textContent=store.lang==='en'?'Saved ✓':'已保存 ✓';setTimeout(()=>el.textContent='',1400)}
 function currentTrip(){return store.trips.find(t=>t.id===store.activeTripId)||null}
 function currentDisplayName(){return String(window.voyaCurrentUserName||'Alison').trim()||'Alison'}
@@ -173,3 +180,4 @@ document.getElementById('langToggle').onclick=()=>setLang(store.lang==='en'?'zh'
 document.querySelectorAll('#bottomNav button').forEach(b=>b.onclick=()=>navigate(b.dataset.page));
 document.getElementById('langToggle').textContent=store.lang==='en'?'中':'EN';
 navigate('trips');
+window.voyaImageCacheReady=(async()=>{await cachePackingImages();return restoreCachedPackingImages()})();
