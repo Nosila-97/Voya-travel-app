@@ -103,8 +103,14 @@ async function ensureCollabAuth(after){
   openCollabAuth(after); return false;
 }
 
-function serializableTrip(tr){ const copy=JSON.parse(JSON.stringify(tr)); copy.cloudId=tr.cloudId||null; return copy; }
-function mergePackingImages(target,source){const sourceById=new Map((source?.packing||[]).map(item=>[item.id,item])),packing=target?.packing||[];let recovered=0;target.packing=packing.map(item=>{if(item.image||item.imageCleared)return item;const sourceItem=sourceById.get(item.id);if(sourceItem?.image){recovered++;return{...item,image:sourceItem.image}}return item});return recovered}
+const PACKING_IMAGE_BUCKET='voya-packing-images';
+function serializableTrip(tr){const copy=JSON.parse(JSON.stringify(tr));copy.cloudId=tr.cloudId||null;(copy.packing||[]).forEach(item=>{if(item.imagePath)item.image='';delete item.imageRemote;delete item.pendingImageDelete});return copy}
+function mergePackingImages(target,source){const sourceById=new Map((source?.packing||[]).map(item=>[item.id,item])),packing=target?.packing||[];let recovered=0;target.packing=packing.map(item=>{if(item.imageCleared)return item;const sourceItem=sourceById.get(item.id);if(!sourceItem)return item;const merged={...item};if(!merged.imagePath&&sourceItem.imagePath){merged.imagePath=sourceItem.imagePath;recovered++}if(!merged.image&&sourceItem.image){merged.image=sourceItem.image;recovered++}return merged});return recovered}
+function packingDataUrlToBlob(dataUrl){const parts=dataUrl.split(','),mime=parts[0]?.match(/data:([^;]+)/)?.[1]||'image/jpeg',bytes=atob(parts[1]||''),array=new Uint8Array(bytes.length);for(let i=0;i<bytes.length;i++)array[i]=bytes.charCodeAt(i);return new Blob([array],{type:mime})}
+async function uploadPackingImage(tr,item){if(!tr?.cloudId||!item?.id||!item.image?.startsWith('data:image/'))return false;const blob=packingDataUrlToBlob(item.image),extension=blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg',fileId=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2),path=`${tr.cloudId}/${item.id}/${fileId}.${extension}`;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).upload(path,blob,{contentType:blob.type,upsert:false,cacheControl:'31536000'});if(error){console.error('Voyā image upload failed',error);return false}item.imagePath=path;item.imageCleared=false;return true}
+async function removePackingImage(path){if(!path)return true;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).remove([path]);if(error){console.error('Voyā image removal failed',error);return false}return true}
+async function migrateTripImagesToStorage(tr){if(!tr?.cloudId)return;const items=tr.packing||[];for(const item of items){let ready=true;if(item.image?.startsWith('data:image/')&&!item.imagePath)ready=await uploadPackingImage(tr,item);if(item.pendingImageDelete&&ready){if(await removePackingImage(item.pendingImageDelete))delete item.pendingImageDelete}}}
+async function hydratePackingImageUrls(tr){const items=(tr?.packing||[]).filter(item=>item.imagePath);if(!items.length)return;const paths=[...new Set(items.map(item=>item.imagePath))],{data,error}=await sb.storage.from(PACKING_IMAGE_BUCKET).createSignedUrls(paths,604800);if(error){console.error('Voyā image URL restore failed',error);return}const urls=new Map((data||[]).filter(row=>row.signedUrl).map(row=>[row.path,row.signedUrl]));items.forEach(item=>{const url=urls.get(item.imagePath);if(url){item.image=url;item.imageRemote=true}})}
 
 async function createCloudTrip(tr){
   if(!tr || tr.cloudId || !collabSession || !meaningfulTrip(tr)) return tr?.cloudId||null;
@@ -120,6 +126,7 @@ async function createCloudTrip(tr){
     }).select('id').single();
     if(error){ console.error('Voyā cloud trip create failed',error); return null; }
     tr.cloudId=data.id;
+    await migrateTripImagesToStorage(tr);
     originalSaveStore(false);
     const {error:docError}=await sb.from('trip_documents').insert({trip_id:data.id,data:serializableTrip(tr),updated_by:userId,updated_at:new Date().toISOString()});
     if(docError){ console.error('Voyā cloud document create failed',docError); return null; }
@@ -132,6 +139,8 @@ async function createCloudTrip(tr){
 async function syncTripToCloud(tr){
   if(!tr || !collabSession || applyingRemote || !meaningfulTrip(tr)) return;
   if(!tr.cloudId){ const id=await createCloudTrip(tr); if(!id) return; }
+  await migrateTripImagesToStorage(tr);
+  originalSaveStore(false);
   const cloudId=tr.cloudId, userId=collabSession.user.id, data=serializableTrip(tr);
   const {data:existing,error:readError}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).maybeSingle();
   if(!readError&&existing?.data)mergePackingImages(data,existing.data);
@@ -177,6 +186,7 @@ async function hydrateAllCloudTrips(){
       if(local&&mergePackingImages(remote,local))recoveredTrips.push(remote);
       if(i>=0) store.trips[i]=remote; else store.trips.push(remote);
     }
+    await Promise.all(store.trips.filter(tr=>tr.cloudId).map(tr=>hydratePackingImageUrls(tr)));
     await Promise.all(store.trips.filter(tr=>tr.cloudId).map(tr=>refreshTripRoster(tr)));
     // Keep local-only drafts, but sort cloud trips by their own updatedAt when available.
     store.trips.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
@@ -305,10 +315,11 @@ async function subscribeTrip(cloudId){
   .subscribe();
 }
 
-function applyRemoteTrip(cloudId,remote){
+async function applyRemoteTrip(cloudId,remote){
   applyingRemote=true;
   try{
     remote.cloudId=cloudId;
+    await hydratePackingImageUrls(remote);
     const i=store.trips.findIndex(t=>t.cloudId===cloudId || t.id===remote.id);
     if(i>=0) store.trips[i]=remote; else store.trips.unshift(remote);
     if(store.activeTripId && i>=0 && store.activeTripId!==remote.id) store.activeTripId=remote.id;
@@ -322,6 +333,7 @@ async function loadCloudTrip(cloudId){
   const {data,error}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).single();
   if(error||!data?.data){ showToast(error?.message||collabText('Trip could not be loaded.','无法加载旅行。')); return; }
   const remote=data.data; remote.cloudId=cloudId;
+  await hydratePackingImageUrls(remote);
   const i=store.trips.findIndex(t=>t.cloudId===cloudId || t.id===remote.id);
   if(i>=0) store.trips[i]=remote; else store.trips.unshift(remote);
   store.activeTripId=remote.id; await refreshTripRoster(remote); originalSaveStore(false); subscribeTrip(cloudId); navigate('trip');
