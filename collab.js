@@ -11,6 +11,9 @@ let pendingAfterAuth = null;
 let applyingRemote = false;
 let hydratingCloud = false;
 const cloudingTrips = new Map();
+const voteLoads = new Map();
+const voteBusy = new Set();
+window.voyaVoteState=window.voyaVoteState||{};
 
 const originalSaveStore = window.saveStore;
 const originalRenderTrip = window.renderTrip;
@@ -28,6 +31,67 @@ async function refreshTripRoster(tr){
   const owner=rows.find(row=>row.role==='owner');
   window.voyaTripRosters[tr.cloudId]={ownerName:nameOf(owner||{})||ownName,count:rows.length,members:rows.filter(row=>row.role!=='owner'&&nameOf(row)).map(row=>({userId:row.user_id,name:nameOf(row),role:row.role}))};
   tr.cloudTravelerCount=rows.length;
+}
+
+function paintVoteSurface(tr){
+  if(!tr?.cloudId||currentTrip()?.cloudId!==tr.cloudId||document.querySelector('.modal-backdrop'))return;
+  if(currentPage==='packing'&&typeof renderPackItems==='function')renderPackItems();
+  if(currentPage==='outfits'&&typeof renderOutfits==='function')renderOutfits();
+}
+
+async function loadTripVotes(tr,paint=true){
+  if(!tr?.cloudId||!collabSession)return null;
+  const {data,error}=await sb.from('item_votes').select('target_type,target_id,voter_id').eq('trip_id',tr.cloudId);
+  if(error){console.error('Voyā votes restore failed',error);return null}
+  const state={packing:{},outfit:{}};
+  (data||[]).forEach(row=>{
+    if(!state[row.target_type])return;
+    const vote=state[row.target_type][row.target_id]||{count:0,mine:false};
+    vote.count+=1;
+    if(row.voter_id===collabSession.user.id)vote.mine=true;
+    state[row.target_type][row.target_id]=vote;
+  });
+  window.voyaVoteState[tr.cloudId]=state;
+  if(paint)paintVoteSurface(tr);
+  return state;
+}
+
+function ensureTripVotes(tr){
+  if(!tr?.cloudId||!collabSession)return Promise.resolve(null);
+  if(window.voyaVoteState[tr.cloudId])return Promise.resolve(window.voyaVoteState[tr.cloudId]);
+  if(voteLoads.has(tr.cloudId))return voteLoads.get(tr.cloudId);
+  const job=loadTripVotes(tr,true).finally(()=>voteLoads.delete(tr.cloudId));
+  voteLoads.set(tr.cloudId,job);
+  return job;
+}
+
+async function toggleItemVote(targetType,targetId){
+  if(!['packing','outfit'].includes(targetType)||!targetId)return;
+  if(!collabSession){const ok=await ensureCollabAuth(()=>toggleItemVote(targetType,targetId));if(!ok)return}
+  const tr=currentTrip();
+  if(!tr)return;
+  if(!tr.cloudId){await syncTripToCloud(tr);if(!tr.cloudId){showToast(collabText('Save the trip online before voting.','请先将旅行同步到账户后再投票。'));return}}
+  await ensureTripVotes(tr);
+  const key=tr.cloudId+':'+targetType+':'+targetId;
+  if(voteBusy.has(key))return;
+  voteBusy.add(key);
+  const state=window.voyaVoteState[tr.cloudId]||(window.voyaVoteState[tr.cloudId]={packing:{},outfit:{}}),bucket=state[targetType]||(state[targetType]={}),previous={...(bucket[targetId]||{count:0,mine:false})},removing=previous.mine;
+  bucket[targetId]={count:Math.max(0,previous.count+(removing?-1:1)),mine:!removing};
+  paintVoteSurface(tr);
+  let error;
+  if(removing){
+    ({error}=await sb.from('item_votes').delete().eq('trip_id',tr.cloudId).eq('target_type',targetType).eq('target_id',targetId).eq('voter_id',collabSession.user.id));
+  }else{
+    ({error}=await sb.from('item_votes').insert({trip_id:tr.cloudId,target_type:targetType,target_id:targetId,voter_id:collabSession.user.id}));
+  }
+  if(error&&error.code!=='23505'){
+    bucket[targetId]=previous;
+    paintVoteSurface(tr);
+    showToast(collabText('Vote could not be saved. Try again.','投票保存失败，请重试。'));
+    console.error('Voyā vote update failed',error);
+  }
+  await loadTripVotes(tr,true);
+  voteBusy.delete(key);
 }
 
 function meaningfulTrip(tr){ return !!(tr && (tr.name || tr.destination || tr.startDate || tr.endDate || tr.members?.length || tr.packing?.length || tr.outfits?.length || tr.shared?.length)); }
@@ -284,7 +348,7 @@ function injectShareButton(){
 }
 
 window.renderTrip = function(){ originalRenderTrip(); injectShareButton(); };
-window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if(tr?.cloudId){subscribeTrip(tr.cloudId);refreshTripRoster(tr).then(()=>{if(currentTrip()?.id===tr.id)navigate(currentPage)});} };
+window.openTrip = function(id){ originalOpenTrip(id); const tr=currentTrip(); if(tr?.cloudId){subscribeTrip(tr.cloudId);Promise.all([refreshTripRoster(tr),loadTripVotes(tr,false)]).then(()=>{if(currentTrip()?.id===tr.id)navigate(currentPage)});} };
 
 let activeRosterRefresh=null;
 async function refreshActiveTripView(){
@@ -299,7 +363,7 @@ async function refreshActiveTripView(){
       return;
     }
     if(!tr?.cloudId)return;
-    await refreshTripRoster(tr);
+    await Promise.all([refreshTripRoster(tr),loadTripVotes(tr,false)]);
     originalSaveStore(false);
     if(currentTrip()?.id===localId&&currentPage===page&&!document.querySelector('.modal-backdrop'))navigate(page);
   })();
@@ -315,6 +379,10 @@ async function subscribeTrip(cloudId){
     const row=payload.new; if(!row?.data || row.updated_by===collabSession?.user?.id) return; applyRemoteTrip(cloudId,row.data);
   })
   .on('postgres_changes',{event:'*',schema:'public',table:'trip_members',filter:`trip_id=eq.${cloudId}`},()=>refreshActiveTripView())
+  .on('postgres_changes',{event:'*',schema:'public',table:'item_votes',filter:`trip_id=eq.${cloudId}`},()=>{
+    const tr=store.trips.find(item=>item.cloudId===cloudId);
+    if(tr)loadTripVotes(tr,true);
+  })
   .subscribe();
 }
 
@@ -360,7 +428,7 @@ async function onSignedIn(session){
   if(nameSyncError)console.error('Voyā display name sync failed',nameSyncError);
   await migrateLocalTripsToCloud();
   await hydrateAllCloudTrips();
-  const tr=currentTrip(); if(tr?.cloudId) subscribeTrip(tr.cloudId);
+  const tr=currentTrip(); if(tr?.cloudId){subscribeTrip(tr.cloudId);await loadTripVotes(tr,false);}
   await acceptInviteFromUrl();
 }
 
@@ -377,6 +445,7 @@ async function initCollab(){
 window.collabSignIn=collabSignIn; window.collabSignUp=collabSignUp; window.closeCollabAuth=closeCollabAuth;
 window.shareCurrentTrip=shareCurrentTrip; window.copyShareLink=copyShareLink; window.nativeShareTrip=nativeShareTrip;
 window.voyaHydrateCloudTrips=hydrateAllCloudTrips; window.voyaMigrateTrips=migrateLocalTripsToCloud;
+window.voyaEnsureVotes=ensureTripVotes; window.voyaToggleVote=toggleItemVote;
 window.deleteTrip=deleteTripEverywhere;
 
 const voyaShareObserver = new MutationObserver(()=>{ if(document.querySelector('.overview-top')) injectShareButton(); });
