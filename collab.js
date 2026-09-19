@@ -172,7 +172,7 @@ function mergePackingImages(target,source){const sourceById=new Map((source?.pac
 function packingDataUrlToBlob(dataUrl){const parts=dataUrl.split(','),mime=parts[0]?.match(/data:([^;]+)/)?.[1]||'image/jpeg',bytes=atob(parts[1]||''),array=new Uint8Array(bytes.length);for(let i=0;i<bytes.length;i++)array[i]=bytes.charCodeAt(i);return new Blob([array],{type:mime})}
 async function uploadPackingImage(tr,item){if(!tr?.cloudId||!item?.id||!item.image?.startsWith('data:image/'))return false;const blob=packingDataUrlToBlob(item.image),extension=blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg',fileId=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2),path=`${tr.cloudId}/${item.id}/${fileId}.${extension}`;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).upload(path,blob,{contentType:blob.type,upsert:false,cacheControl:'31536000'});if(error){console.error('Voyā image upload failed',error);return false}item.imagePath=path;item.imageCleared=false;return true}
 async function removePackingImage(path){if(!path)return true;const {error}=await sb.storage.from(PACKING_IMAGE_BUCKET).remove([path]);if(error){console.error('Voyā image removal failed',error);return false}return true}
-async function migrateTripImagesToStorage(tr){if(!tr?.cloudId)return;const items=tr.packing||[];for(const item of items){let ready=true;if(item.image?.startsWith('data:image/')&&!item.imagePath)ready=await uploadPackingImage(tr,item);if(item.pendingImageDelete&&ready){if(await removePackingImage(item.pendingImageDelete))delete item.pendingImageDelete}}if(tr.pendingImageDeletes?.length){const failed=[];for(const path of tr.pendingImageDeletes){if(!await removePackingImage(path))failed.push(path)}tr.pendingImageDeletes=failed}}
+async function migrateTripImagesToStorage(tr){if(!tr?.cloudId)return true;const items=tr.packing||[],pending=items.filter(item=>item.image?.startsWith('data:image/')&&!item.imagePath),results=await Promise.all(pending.map(item=>uploadPackingImage(tr,item)));let allReady=results.every(Boolean);for(const item of items){if(item.pendingImageDelete&&(!item.image?.startsWith('data:image/')||item.imagePath)){if(await removePackingImage(item.pendingImageDelete))delete item.pendingImageDelete;else allReady=false}}if(tr.pendingImageDeletes?.length){const failed=[];for(const path of tr.pendingImageDeletes){if(!await removePackingImage(path))failed.push(path)}tr.pendingImageDeletes=failed;if(failed.length)allReady=false}return allReady}
 async function hydratePackingImageUrls(tr){const items=(tr?.packing||[]).filter(item=>item.imagePath);if(!items.length)return;const paths=[...new Set(items.map(item=>item.imagePath))],{data,error}=await sb.storage.from(PACKING_IMAGE_BUCKET).createSignedUrls(paths,604800);if(error){console.error('Voyā image URL restore failed',error);return}const urls=new Map((data||[]).filter(row=>row.signedUrl).map(row=>[row.path,row.signedUrl]));items.forEach(item=>{const url=urls.get(item.imagePath);if(url){item.image=url;item.imageRemote=true}})}
 
 async function createCloudTrip(tr){
@@ -205,13 +205,16 @@ async function syncTripToCloud(tr){
   const cloudId=tr.cloudId, userId=collabSession.user.id;
   const {data:existing,error:readError}=await sb.from('trip_documents').select('data').eq('trip_id',cloudId).maybeSingle();
   if(!readError&&existing?.data)mergePackingImages(tr,existing.data);
-  await migrateTripImagesToStorage(tr);
+  const imagesReady=await migrateTripImagesToStorage(tr);
+  if(!imagesReady){console.error('Voyā cloud sync paused because an image upload failed');return false;}
   originalSaveStore(false);
   const data=serializableTrip(tr);
   const {error}=await sb.from('trip_documents').upsert({trip_id:cloudId,data,updated_by:userId,updated_at:new Date().toISOString()},{onConflict:'trip_id'});
-  if(error){ console.error('Voyā cloud sync failed',error); return; }
+  if(error){ console.error('Voyā cloud sync failed',error); return false; }
   mergePackingImages(tr,data);
-  await sb.from('trips').update({title:tr.name||tr.destination||'Trip',destination:tr.destination||null,starts_on:tr.startDate||null,ends_on:tr.endDate||null,updated_at:new Date().toISOString()}).eq('id',cloudId);
+  const {error:tripError}=await sb.from('trips').update({title:tr.name||tr.destination||'Trip',destination:tr.destination||null,starts_on:tr.startDate||null,ends_on:tr.endDate||null,updated_at:new Date().toISOString()}).eq('id',cloudId);
+  if(tripError){console.error('Voyā trip summary sync failed',tripError);return false;}
+  return true;
 }
 
 window.saveStore = function(show=false){
@@ -445,6 +448,7 @@ window.collabSignIn=collabSignIn; window.collabSignUp=collabSignUp; window.close
 window.shareCurrentTrip=shareCurrentTrip; window.copyShareLink=copyShareLink; window.nativeShareTrip=nativeShareTrip;
 window.voyaHydrateCloudTrips=hydrateAllCloudTrips; window.voyaMigrateTrips=migrateLocalTripsToCloud;
 window.voyaEnsureVotes=ensureTripVotes; window.voyaToggleVote=toggleItemVote;
+window.voyaSyncTripNow=async function(tr=currentTrip()){clearTimeout(collabSyncTimer);const ok=await syncTripToCloud(tr);if(!ok&&tr?.cloudId){clearTimeout(collabSyncTimer);collabSyncTimer=setTimeout(()=>syncTripToCloud(tr),2500)}return ok!==false};
 window.deleteTrip=deleteTripEverywhere;
 
 const voyaShareObserver = new MutationObserver(()=>{ if(document.querySelector('.overview-top')) injectShareButton(); });
