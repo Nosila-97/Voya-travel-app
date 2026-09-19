@@ -35,13 +35,12 @@ async function refreshTripRoster(tr){
 
 function paintVoteSurface(tr){
   if(!tr?.cloudId||currentTrip()?.cloudId!==tr.cloudId||document.querySelector('.modal-backdrop'))return;
-  if(currentPage==='packing'&&typeof renderPackItems==='function')renderPackItems();
   if(currentPage==='outfits'&&typeof renderOutfits==='function')renderOutfits();
 }
 
 async function loadTripVotes(tr,paint=true){
   if(!tr?.cloudId||!collabSession)return null;
-  const {data,error}=await sb.from('item_votes').select('target_type,target_id,voter_id').eq('trip_id',tr.cloudId);
+  const {data,error}=await sb.from('item_votes').select('target_type,target_id,voter_id').eq('trip_id',tr.cloudId).eq('target_type','outfit');
   if(error){console.error('Voyā votes restore failed',error);return null}
   const state={packing:{},outfit:{}};
   (data||[]).forEach(row=>{
@@ -66,7 +65,7 @@ function ensureTripVotes(tr){
 }
 
 async function toggleItemVote(targetType,targetId){
-  if(!['packing','outfit'].includes(targetType)||!targetId)return;
+  if(targetType!=='outfit'||!targetId)return;
   if(!collabSession){const ok=await ensureCollabAuth(()=>toggleItemVote(targetType,targetId));if(!ok)return}
   const tr=currentTrip();
   if(!tr)return;
